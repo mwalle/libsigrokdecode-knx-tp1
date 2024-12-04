@@ -17,6 +17,7 @@
 ## along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
+from functools import cache
 import sigrokdecode as srd
 from .lists import *
 
@@ -76,6 +77,13 @@ class Decoder(srd.Decoder):
         self.last_octet = 0
         self.length = 0
 
+    @cache
+    def get_annotation_id(self, name):
+        for i, a in enumerate(self.annotations):
+            if a[0] == name:
+                return i
+        raise KeyError(name)
+
     def start(self):
         self.out_ann = self.register(srd.OUTPUT_ANN)
         self.out_binary = self.register(srd.OUTPUT_BINARY)
@@ -84,6 +92,12 @@ class Decoder(srd.Decoder):
         if key == srd.SRD_CONF_SAMPLERATE:
             self.samplerate = value
             self.bit_width = int(self.samplerate / 9600)
+
+    def put(self, ss, se, output_id, data):
+        if type(data[0]) is str:
+            # create a copy in case data is an immutable tuple
+            data = [self.get_annotation_id(data[0]), data[1]]
+        super().put(ss, se, output_id, data)
 
     def putb(self, data):
         ss = self.samplenum - int(self.bit_width / 6)
@@ -122,17 +136,17 @@ class Decoder(srd.Decoder):
                 desc = ['{}Data Standard Frame, {} priority'.format(repeated, priority)]
             else:
                 desc = ['Data Extended Frame']
-            self.put(ss, se, self.out_ann, [7, desc])
+            self.put(ss, se, self.out_ann, ['logical', desc])
             if octet & 0x33 == 0:
                 return
         elif self.octet_num == 2:
             sa = tp1_address_to_str(octet, self.last_octet)
             self.put(self.last_ss, se, self.out_ann,
-                     [7, ['Source Address:{}'.format(sa)]])
+                     ['logical', ['Source Address:{}'.format(sa)]])
         elif self.octet_num == 4:
             da = tp1_address_to_str(octet, self.last_octet)
             self.put(self.last_ss, se, self.out_ann,
-                     [7, ['Destination Address:{}'.format(da)]])
+                     ['logical', ['Destination Address:{}'.format(da)]])
         elif self.octet_num == 5:
             # save length for later
             self.length = octet & 15
@@ -141,15 +155,15 @@ class Decoder(srd.Decoder):
             at = 'Group Address' if octet & 0x80 else 'Individal Address'
             hc = (octet >> 4) & 7
             desc = ['{}, Hop count:{}, Length:{}'.format(at, hc, len)]
-            self.put(ss, se, self.out_ann, [7, desc])
+            self.put(ss, se, self.out_ann, ['logical', desc])
         elif self.octet_num > 5 and self.octet_num <= self.length + 6:
-            self.put(ss, se, self.out_ann, [7, ['Data:{:02X}'.format(octet)]])
+            self.put(ss, se, self.out_ann, ['logical', ['Data:{:02X}'.format(octet)]])
         elif self.octet_num == 7 + self.length:
             if self.fcs == octet:
                 desc = ['FCS OK']
             else:
                 desc = ['FCS error (expected {:02X})'.format(self.fcs), 'FCS error']
-            self.put(ss, se, self.out_ann, [7, desc])
+            self.put(ss, se, self.out_ann, ['logical', desc])
             self.octet_num = 0
             return
         self.fcs ^= octet
@@ -170,7 +184,7 @@ class Decoder(srd.Decoder):
                 if self.options['polarity'] == 'inverted':
                     rxtx ^= 1
                 if not rxtx:
-                    self.putb([0, ['Start bit', 'Start', 'S']])
+                    self.putb(['start', ['Start bit', 'Start', 'S']])
                     self.bitnum = 0
                     self.parity = 0
                     self.frame_error = False
@@ -180,12 +194,12 @@ class Decoder(srd.Decoder):
                 rxtx, tx = self.wait({'skip': self.bit_width})
                 if self.options['polarity'] == 'inverted':
                     rxtx ^= 1
-                self.putb([1, ['1'] if rxtx else ['0']])
+                self.putb(['data', ['1'] if rxtx else ['0']])
                 self.byte = (rxtx << 8 | self.byte) >> 1
                 self.bitnum += 1
                 self.parity = self.parity ^ rxtx
                 if self.bitnum == 8:
-                    self.putd([6, ['{:02X}'.format(self.byte)]])
+                    self.putd(['raw', ['{:02X}'.format(self.byte)]])
                     self.putbinary([0, self.byte.to_bytes()])
                     self.state = 'PARITY'
             elif self.state == 'PARITY':
@@ -194,9 +208,9 @@ class Decoder(srd.Decoder):
                     rxtx ^= 1
                 self.parity = self.parity ^ rxtx
                 if not self.parity:
-                    self.putb([2, ['Parity bit', 'Parity', 'P']])
+                    self.putb(['parity-ok', ['Parity bit', 'Parity', 'P']])
                 else:
-                    self.putb([3, ['Parity error', 'Parity err', 'PE']])
+                    self.putb(['parity-err', ['Parity error', 'Parity err', 'PE']])
                 self.state = 'STOP'
                 self.bitnum = 0
             elif self.state == 'STOP':
@@ -204,9 +218,9 @@ class Decoder(srd.Decoder):
                 if self.options['polarity'] == 'inverted':
                     rxtx ^= 1
                 if rxtx:
-                    self.putb([4, ['Stop bit', 'Stop', 'T']])
+                    self.putb(['stop-ok', ['Stop bit', 'Stop', 'T']])
                 else:
-                    self.putb([5, ['Stop bit error', 'Stop err', 'TE']])
+                    self.putb(['stop-err', ['Stop bit error', 'Stop err', 'TE']])
                     self.frame_error = True
                 self.bitnum += 1
                 if self.bitnum == 2:
