@@ -76,6 +76,7 @@ class Decoder(srd.Decoder):
         self.last_ss = 0
         self.last_octet = 0
         self.length = 0
+        self.last_frame_se = 0
 
     @lru_cache
     def get_annotation_id(self, name):
@@ -116,6 +117,14 @@ class Decoder(srd.Decoder):
     def handle_octet(self, octet):
         ss = self.samplenum - int(self.bit_width / 6) - self.bit_width * 11
         se = ss + self.bit_width * 12
+
+        # ACK has a spacing of 15 bit times (see 3.2.2 System Specifications
+        # Twisted Pair 1 Fig. 38), so a timeout of 10 bit times seems
+        # appropriate for decoding
+        if ss > self.last_frame_se + self.bit_width * 10:
+            self.octet_num = 0
+        self.last_frame_se = se
+
         if self.octet_num == 0:
             self.fcs = 0xff
             se = ss + self.bit_width * 12
@@ -148,7 +157,7 @@ class Decoder(srd.Decoder):
             self.put(self.last_ss, se, self.out_ann,
                      ['logical', ['Destination Address:{}'.format(da)]])
         elif self.octet_num == 5:
-            # save length for later
+            # save length for FCS calculation
             self.length = octet & 15
 
             len = self.length
@@ -164,8 +173,6 @@ class Decoder(srd.Decoder):
             else:
                 desc = ['FCS error (expected {:02X})'.format(self.fcs), 'FCS error']
             self.put(ss, se, self.out_ann, ['logical', desc])
-            self.octet_num = 0
-            return
         self.fcs ^= octet
         self.last_ss = ss
         self.last_octet = octet
