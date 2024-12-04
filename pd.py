@@ -17,7 +17,7 @@
 ## along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
-from functools import cache
+from functools import lru_cache
 import sigrokdecode as srd
 from .lists import *
 
@@ -77,7 +77,7 @@ class Decoder(srd.Decoder):
         self.last_octet = 0
         self.length = 0
 
-    @cache
+    @lru_cache
     def get_annotation_id(self, name):
         for i, a in enumerate(self.annotations):
             if a[0] == name:
