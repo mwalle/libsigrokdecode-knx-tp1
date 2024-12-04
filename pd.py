@@ -36,7 +36,7 @@ class Decoder(srd.Decoder):
     license = 'gplv2+'
     inputs = ['logic']
     outputs = []
-    tags = ['Embedded/industrial']
+    tags = ['Automation']
     channels = (
         {'id': 'knx', 'name': 'KNX', 'desc': 'KNX data line'},
     )
