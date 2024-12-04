@@ -59,8 +59,8 @@ class Decoder(srd.Decoder):
     )
     annotation_rows = (
         ('bits', 'Bits', (0, 1, 2, 3, 4, 5)),
-        ('raw', 'Raw data', (6,)),
-        ('logical', 'Logical data', (7,)),
+        ('raw-data', 'Raw data', (6,)),
+        ('logical-data', 'Logical data', (7,)),
     )
     binary = (
         ('rxtx', 'RX/TX dump'),
