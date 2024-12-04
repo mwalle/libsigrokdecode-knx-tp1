@@ -20,6 +20,9 @@
 import sigrokdecode as srd
 from .lists import *
 
+def tp1_address_to_str(msb, lsb):
+    return '{}.{}.{}'.format(msb, lsb >> 4, lsb & 0xf)
+
 class SamplerateError(Exception):
     pass
 
@@ -116,31 +119,36 @@ class Decoder(srd.Decoder):
                     priority = 'normal'
                 elif octet & 0x0c == 0x0c:
                     priority = 'low'
-                desc = [f'{repeated}Data Standard Frame, {priority} priority']
+                desc = ['{}Data Standard Frame, {} priority'.format(repeated, priority)]
             else:
                 desc = ['Data Extended Frame']
             self.put(ss, se, self.out_ann, [7, desc])
             if octet & 0x33 == 0:
                 return
         elif self.octet_num == 2:
-            sa = f'{octet:d}.{self.last_octet >> 4:d}.{self.last_octet & 0xf:d}'
-            self.put(self.last_ss, se, self.out_ann, [7, [f'Source Address:{sa}']])
+            sa = tp1_address_to_str(octet, self.last_octet)
+            self.put(self.last_ss, se, self.out_ann,
+                     [7, ['Source Address:{}'.format(sa)]])
         elif self.octet_num == 4:
-            sa = f'{octet:d}.{self.last_octet >> 4:d}.{self.last_octet & 0xf:d}'
-            self.put(self.last_ss, se, self.out_ann, [7, [f'Destination Address:{sa}']])
+            da = tp1_address_to_str(octet, self.last_octet)
+            self.put(self.last_ss, se, self.out_ann,
+                     [7, ['Destination Address:{}'.format(da)]])
         elif self.octet_num == 5:
-            at = 'Group Address' if octet & 0x80 else 'Individal Address'
-            hop_count = (octet >> 4) & 7
+            # save length for later
             self.length = octet & 15
-            desc = [f'{at}, Hop count:{hop_count}, Length:{self.length}']
+
+            len = self.length
+            at = 'Group Address' if octet & 0x80 else 'Individal Address'
+            hc = (octet >> 4) & 7
+            desc = ['{}, Hop count:{}, Length:{}'.format(at, hc, len)]
             self.put(ss, se, self.out_ann, [7, desc])
         elif self.octet_num > 5 and self.octet_num <= self.length + 6:
-            self.put(ss, se, self.out_ann, [7, [f'Data:{octet:02X}']])
+            self.put(ss, se, self.out_ann, [7, ['Data:{:02X}'.format(octet)]])
         elif self.octet_num == 7 + self.length:
             if self.fcs == octet:
                 desc = ['FCS OK']
             else:
-                desc = [f'FCS error (expected {self.fcs:02X})', 'FCS error']
+                desc = ['FCS error (expected {:02X})'.format(self.fcs), 'FCS error']
             self.put(ss, se, self.out_ann, [7, desc])
             self.octet_num = 0
             return
@@ -177,7 +185,7 @@ class Decoder(srd.Decoder):
                 self.bitnum += 1
                 self.parity = self.parity ^ rxtx
                 if self.bitnum == 8:
-                    self.putd([6, [f'{self.byte:02X}']])
+                    self.putd([6, ['{:02X}'.format(self.byte)]])
                     self.putbinary([0, self.byte.to_bytes()])
                     self.state = 'PARITY'
             elif self.state == 'PARITY':
