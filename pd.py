@@ -18,6 +18,7 @@
 ##
 
 from functools import lru_cache
+from math import ceil, floor
 import sigrokdecode as srd
 from .lists import *
 
@@ -92,7 +93,7 @@ class Decoder(srd.Decoder):
     def metadata(self, key, value):
         if key == srd.SRD_CONF_SAMPLERATE:
             self.samplerate = value
-            self.bit_width = int(self.samplerate / 9600)
+            self.bit_width = self.samplerate / 9600
 
     def put(self, ss, se, output_id, data):
         if type(data[0]) is str:
@@ -100,23 +101,25 @@ class Decoder(srd.Decoder):
             data = [self.get_annotation_id(data[0]), data[1]]
         super().put(ss, se, output_id, data)
 
+    def get_sample_range(self, numbits):
+        ss = self.samplenum - ceil(self.bit_width * numbits - self.bit_width / 12)
+        se = self.samplenum + floor(self.bit_width / 12)
+        return ss, se
+
     def putb(self, data):
-        ss = self.samplenum - int(self.bit_width / 6)
-        self.put(ss, ss + self.bit_width, self.out_ann, data)
+        ss, se = self.get_sample_range(1)
+        self.put(ss, se, self.out_ann, data)
 
     def putd(self, data):
-        ss = self.samplenum - int(self.bit_width / 6) - self.bit_width * 7
-        se = ss + self.bit_width * 8
+        ss, se = self.get_sample_range(8)
         self.put(ss, se, self.out_ann, data)
 
     def putbinary(self, data):
-        ss = self.samplenum - int(self.bit_width / 6) - self.bit_width * 7
-        se = ss + self.bit_width * 8
+        ss, se = self.get_sample_range(8)
         self.put(ss, se, self.out_binary, data)
 
     def handle_octet(self, octet):
-        ss = self.samplenum - int(self.bit_width / 6) - self.bit_width * 11
-        se = ss + self.bit_width * 12
+        ss, se = self.get_sample_range(12)
 
         # ACK has a spacing of 15 bit times (see 3.2.2 System Specifications
         # Twisted Pair 1 Fig. 38), so a timeout of 10 bit times seems
@@ -127,7 +130,7 @@ class Decoder(srd.Decoder):
 
         if self.octet_num == 0:
             self.fcs = 0xff
-            se = ss + self.bit_width * 12
+            se = ss + floor(self.bit_width * 12)
             if octet & 0x33 == 0:
                 desc = ack_frames.get(octet, ['Invalid', 'Inv'])
             elif octet == 0xf0:
@@ -178,6 +181,31 @@ class Decoder(srd.Decoder):
         self.last_octet = octet
         self.octet_num += 1
 
+    # oversampling by 6
+    def get_next_sample_point(self):
+        samplenum = self.frame_start + round(self.bit_width / 12)
+        samplenum += self.sample_point * self.bit_width / 6
+        self.sample_point += 1
+
+        return ceil(samplenum)
+
+    def sample_bit(self):
+        self.bit_ss = -1
+        bits = 0
+        for i in range(6):
+            want_num = self.get_next_sample_point()
+            rxtx, _ = self.wait({'skip': want_num - self.samplenum})
+            if self.bit_ss == -1:
+                self.bit_ss = self.samplenum - ceil(self.bit_width / 12)
+
+            if self.options['polarity'] == 'inverted':
+                rxtx ^= 1
+
+            bits = bits << 1 | rxtx
+
+        # iff the first five bits (out of six) are one then it's a one
+        return 1 if bits & 0x3e == 0x3e else 0
+
     def decode(self):
         if not self.samplerate:
             raise SampleRateError('Cannot decode without samplerate.')
@@ -185,11 +213,12 @@ class Decoder(srd.Decoder):
         while True:
             # State machine.
             if self.state == 'IDLE':
+                # wait for edge of start bit
                 self.wait({0: 'f' if self.options['polarity'] == 'normal' else 'r'})
-                # skip a sixth of the bit width
-                rxtx, tx = self.wait({'skip': int(self.bit_width / 6)})
-                if self.options['polarity'] == 'inverted':
-                    rxtx ^= 1
+                self.frame_start = self.samplenum
+                self.sample_point = 0
+
+                rxtx = self.sample_bit()
                 if not rxtx:
                     self.putb(['start', ['Start bit', 'Start', 'S']])
                     self.bitnum = 0
@@ -198,9 +227,7 @@ class Decoder(srd.Decoder):
                     self.byte = 0
                     self.state = 'DATA'
             elif self.state == 'DATA':
-                rxtx, tx = self.wait({'skip': self.bit_width})
-                if self.options['polarity'] == 'inverted':
-                    rxtx ^= 1
+                rxtx = self.sample_bit()
                 self.putb(['data', ['1'] if rxtx else ['0']])
                 self.byte = (rxtx << 8 | self.byte) >> 1
                 self.bitnum += 1
@@ -210,9 +237,7 @@ class Decoder(srd.Decoder):
                     self.putbinary([0, self.byte.to_bytes()])
                     self.state = 'PARITY'
             elif self.state == 'PARITY':
-                rxtx, tx = self.wait({'skip': self.bit_width})
-                if self.options['polarity'] == 'inverted':
-                    rxtx ^= 1
+                rxtx = self.sample_bit()
                 self.parity = self.parity ^ rxtx
                 if not self.parity:
                     self.putb(['parity-ok', ['Parity bit', 'Parity', 'P']])
@@ -221,9 +246,7 @@ class Decoder(srd.Decoder):
                 self.state = 'STOP'
                 self.bitnum = 0
             elif self.state == 'STOP':
-                rxtx, tx = self.wait({'skip': self.bit_width})
-                if self.options['polarity'] == 'inverted':
-                    rxtx ^= 1
+                rxtx = self.sample_bit()
                 if rxtx:
                     self.putb(['stop-ok', ['Stop bit', 'Stop', 'T']])
                 else:
