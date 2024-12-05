@@ -23,7 +23,7 @@ import sigrokdecode as srd
 from .lists import *
 
 def tp1_address_to_str(msb, lsb):
-    return '{}.{}.{}'.format(lsb >> 4, lsb & 0xf, msb)
+    return '{}/{}/{}'.format(lsb >> 4, lsb & 0xf, msb)
 
 class SamplerateError(Exception):
     pass
