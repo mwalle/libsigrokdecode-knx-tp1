@@ -234,7 +234,7 @@ class Decoder(srd.Decoder):
                 self.parity = self.parity ^ rxtx
                 if self.bitnum == 8:
                     self.putd(['raw', ['{:02X}'.format(self.byte)]])
-                    self.putbinary([0, self.byte.to_bytes()])
+                    self.putbinary([0, self.byte.to_bytes(length=1, byteorder='big')])
                     self.state = 'PARITY'
             elif self.state == 'PARITY':
                 rxtx = self.sample_bit()
