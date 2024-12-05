@@ -78,7 +78,7 @@ class Decoder(srd.Decoder):
         self.length = 0
         self.last_frame_se = 0
 
-    @lru_cache
+    @lru_cache()
     def get_annotation_id(self, name):
         for i, a in enumerate(self.annotations):
             if a[0] == name:
