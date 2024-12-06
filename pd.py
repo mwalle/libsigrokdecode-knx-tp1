@@ -141,15 +141,8 @@ class Decoder(srd.Decoder):
                 desc = ['Poll Data Frame']
             elif octet & 0x80:
                 repeated = '' if octet & 0x20 else 'Repeated '
-                if octet & 0x0c == 0x00:
-                    priority = 'system'
-                elif octet & 0x0c == 0x08:
-                    priority = 'urgent'
-                elif octet & 0x0c == 0x04:
-                    priority = 'normal'
-                elif octet & 0x0c == 0x0c:
-                    priority = 'low'
-                desc = ['{}Data Standard Frame, {} priority'.format(repeated, priority)]
+                prio = get_desc(priority, octet & 0x0c)[0]
+                desc = ['{}Data Standard Frame, {}'.format(repeated, prio)]
             else:
                 desc = ['Data Extended Frame']
             self.put(ss, se, self.out_ann, ['logical', desc])

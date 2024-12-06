@@ -23,3 +23,10 @@ ack_frames = {
     0xc0: ['BUSY'],
     0x00: ['NACK+BUSY'],
 }
+
+priority = {
+    0x00: ['System Priority', 'System', 'Sys'],
+    0x08: ['Urgent Priority', 'Urgent', 'Urg'],
+    0x04: ['Normal Priority', 'Normal', 'Norm'],
+    0x0c: ['Low Priority', 'Low'],
+}
