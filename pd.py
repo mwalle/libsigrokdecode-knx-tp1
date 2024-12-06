@@ -123,7 +123,7 @@ class Decoder(srd.Decoder):
         self.put(ss, se, self.out_binary, data)
 
     def handle_octet(self, octet):
-        ss, se = self.get_sample_range(11)
+        ss, se = self.get_sample_range(8)
 
         # ACK has a spacing of 15 bit times (see 3.2.2 System Specifications
         # Twisted Pair 1 Fig. 38), so a timeout of 10 bit times seems
@@ -134,7 +134,6 @@ class Decoder(srd.Decoder):
 
         if self.octet_num == 0:
             self.fcs = 0xff
-            se = ss + floor(self.bit_width * 12)
             self.sa = None
             self.da = None
             self.length = 0
@@ -224,7 +223,6 @@ class Decoder(srd.Decoder):
                     self.putb(['start', ['Start bit', 'Start', 'S']])
                     self.bitnum = 0
                     self.parity = 0
-                    self.frame_error = False
                     self.byte = 0
                     self.state = 'DATA'
             elif self.state == 'DATA':
@@ -236,6 +234,7 @@ class Decoder(srd.Decoder):
                 if self.bitnum == 8:
                     self.putd(['raw', ['{:02X}'.format(self.byte)]])
                     self.putbinary([0, self.byte.to_bytes(length=1, byteorder='big')])
+                    self.handle_octet(self.byte)
                     self.state = 'PARITY'
             elif self.state == 'PARITY':
                 rxtx = self.sample_bit()
@@ -251,7 +250,4 @@ class Decoder(srd.Decoder):
                     self.putb(['stop-ok', ['Stop bit', 'Stop', 'T']])
                 else:
                     self.putb(['stop-err', ['Stop bit error', 'Stop err', 'TE']])
-                    self.frame_error = True
-                if not self.parity and not self.frame_error:
-                    self.handle_octet(self.byte)
                 self.state = 'IDLE'
