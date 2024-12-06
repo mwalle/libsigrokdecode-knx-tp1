@@ -25,6 +25,10 @@ from .lists import *
 def tp1_address_to_str(msb, lsb):
     return '{}/{}/{}'.format(lsb >> 4, lsb & 0xf, msb)
 
+def get_desc(desc, key, **kwargs):
+    desc_list = desc.get(key, ['Invalid', 'Inv'])
+    return list(map(lambda s: str.format(s, **kwargs), desc_list))
+
 class SamplerateError(Exception):
     pass
 
@@ -132,7 +136,7 @@ class Decoder(srd.Decoder):
             self.fcs = 0xff
             se = ss + floor(self.bit_width * 12)
             if octet & 0x33 == 0:
-                desc = ack_frames.get(octet, ['Invalid', 'Inv'])
+                desc = get_desc(ack_frames, octet)
             elif octet == 0xf0:
                 desc = ['Poll Data Frame']
             elif octet & 0x80:
