@@ -18,8 +18,8 @@
 ##
 
 ack_frames = {
-    0xCC: ['ACK'],
-    0x0C: ['NACK'],
-    0xC0: ['BUSY'],
+    0xcc: ['ACK'],
+    0x0c: ['NACK'],
+    0xc0: ['BUSY'],
     0x00: ['NACK+BUSY'],
 }
