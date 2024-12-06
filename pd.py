@@ -62,11 +62,12 @@ class Decoder(srd.Decoder):
         ('raw', 'Raw data'),
         ('link', 'Link layer data'),
         ('transport', 'Transport layer data'),
+        ('application', 'Application layer data'),
     )
     annotation_rows = (
         ('bits', 'Bits', (0, 1, 2, 3, 4, 5)),
         ('raw-data', 'Raw data', (6,)),
-        ('layers', 'Layers', (7,8,)),
+        ('layers', 'Layers', (7,8,9,)),
     )
     binary = (
         ('rxtx', 'RX/TX dump'),
@@ -123,6 +124,28 @@ class Decoder(srd.Decoder):
         ss, se = self.get_sample_range(8)
         self.put(ss, se, self.out_binary, data)
 
+    def handle_apdu(self, apdu):
+        if len(apdu) >= 2:
+            _, se0, ctrl0 = apdu[0]
+            _, se, ctrl1 = apdu[1]
+            ss = se0 - floor(self.bit_width * 2)
+            ctrl = (ctrl0 << 8) & 0x300 | ctrl1
+
+            data = ' '.join(map(lambda d: str.format('{:02X}', d[2]), apdu[2:]))
+            # special handling for UserMsg
+            if ctrl >= 0x2ca and ctrl <= 0x2f7:
+                no = ctrl - 0x2ca
+                se = apdu[-1][1]
+                desc = get_desc(a_ctrl, ctrl-no, no=no, data=data)
+            elif ctrl >= 0x2f8 and ctrl <= 0x2fe:
+                no = ctrl - 0x2f8
+                se = apdu[-1][1]
+                desc = get_desc(a_ctrl, ctrl-no, no=no, data=data)
+            else:
+                desc = get_desc(a_ctrl, ctrl)
+
+            self.put(ss, se, self.out_ann, ['application', desc])
+
     def handle_tpdu(self, tpdu):
         if len(tpdu) >= 1:
             ss, se, ctrl = tpdu[0]
@@ -132,6 +155,7 @@ class Decoder(srd.Decoder):
             if not ctrl & 0x80:
                 ctrl &= 0x80fc
                 se -= floor(self.bit_width * 2)
+                self.handle_apdu(tpdu)
             if ctrl & 0x40:
                 seqno = ctrl >> 2 & 0xf
                 ctrl &= 0x80c3
