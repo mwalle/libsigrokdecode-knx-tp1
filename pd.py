@@ -22,8 +22,8 @@ from math import ceil, floor
 import sigrokdecode as srd
 from .lists import *
 
-def tp1_address_to_str(msb, lsb):
-    return '{}/{}/{}'.format(lsb >> 4, lsb & 0xf, msb)
+def tp1_address_to_str(addr):
+    return '{}/{}/{}'.format(addr >> 12, addr >> 8 & 0xf, addr & 0xff)
 
 def get_desc(desc, key, **kwargs):
     desc_list = desc.get(key, ['Invalid', 'Inv'])
@@ -135,6 +135,10 @@ class Decoder(srd.Decoder):
         if self.octet_num == 0:
             self.fcs = 0xff
             se = ss + floor(self.bit_width * 12)
+            self.sa = None
+            self.da = None
+            self.length = 0
+            self.at = False
             if octet & 0x33 == 0:
                 desc = get_desc(ack_frames, octet)
             elif octet == 0xf0:
@@ -149,21 +153,21 @@ class Decoder(srd.Decoder):
             if octet & 0x33 == 0:
                 return
         elif self.octet_num == 2:
-            sa = tp1_address_to_str(octet, self.last_octet)
+            self.sa = self.last_octet << 8 | octet
+            sa = tp1_address_to_str(self.sa)
             self.put(self.last_ss, se, self.out_ann,
                      ['link', ['Source Address:{}'.format(sa)]])
         elif self.octet_num == 4:
-            da = tp1_address_to_str(octet, self.last_octet)
+            self.da = self.last_octet << 8 | octet
+            da = tp1_address_to_str(self.da)
             self.put(self.last_ss, se, self.out_ann,
                      ['link', ['Destination Address:{}'.format(da)]])
         elif self.octet_num == 5:
-            # save length for FCS calculation
             self.length = octet & 15
-
-            len = self.length
-            at = 'Group Address' if octet & 0x80 else 'Individal Address'
+            self.at = bool(octet & 0x80)
+            at = 'Group Address' if self.at else 'Individal Address'
             hc = (octet >> 4) & 7
-            desc = ['{}, Hop count:{}, Length:{}'.format(at, hc, len)]
+            desc = ['{}, Hop count:{}, Length:{}'.format(at, hc, self.length)]
             self.put(ss, se, self.out_ann, ['link', desc])
         elif self.octet_num > 5 and self.octet_num <= self.length + 6:
             self.put(ss, se, self.out_ann, ['link', ['Data:{:02X}'.format(octet)]])
