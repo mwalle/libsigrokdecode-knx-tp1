@@ -61,11 +61,12 @@ class Decoder(srd.Decoder):
         ('stop-err', 'stop error bits'),
         ('raw', 'Raw data'),
         ('link', 'Link layer data'),
+        ('transport', 'Transport layer data'),
     )
     annotation_rows = (
         ('bits', 'Bits', (0, 1, 2, 3, 4, 5)),
         ('raw-data', 'Raw data', (6,)),
-        ('layers', 'Layers', (7,)),
+        ('layers', 'Layers', (7,8,)),
     )
     binary = (
         ('rxtx', 'RX/TX dump'),
@@ -122,6 +123,21 @@ class Decoder(srd.Decoder):
         ss, se = self.get_sample_range(8)
         self.put(ss, se, self.out_binary, data)
 
+    def handle_tpdu(self, tpdu):
+        if len(tpdu) >= 1:
+            ss, se, ctrl = tpdu[0]
+            if self.at:
+                ctrl |= 0x8000
+            seqno = 0
+            if not ctrl & 0x80:
+                ctrl &= 0x80fc
+                se -= floor(self.bit_width * 2)
+            if ctrl & 0x40:
+                seqno = ctrl >> 2 & 0xf
+                ctrl &= 0x80c3
+            desc = get_desc(t_ctrl, ctrl, seqno=seqno)
+            self.put(ss, se, self.out_ann, ['transport', desc])
+
     def handle_octet(self, octet):
         ss, se = self.get_sample_range(8)
 
@@ -138,6 +154,7 @@ class Decoder(srd.Decoder):
             self.da = None
             self.length = 0
             self.at = False
+            self.tpdu = []
             if octet & 0x33 == 0:
                 desc = get_desc(ack_frames, octet)
             elif octet == 0xf0:
@@ -169,10 +186,11 @@ class Decoder(srd.Decoder):
             desc = ['{}, Hop count:{}, Length:{}'.format(at, hc, self.length)]
             self.put(ss, se, self.out_ann, ['link', desc])
         elif self.octet_num > 5 and self.octet_num <= self.length + 6:
-            self.put(ss, se, self.out_ann, ['link', ['Data:{:02X}'.format(octet)]])
+            self.tpdu.append((ss, se, octet))
         elif self.octet_num == 7 + self.length:
             if self.fcs == octet:
                 desc = ['FCS OK']
+                self.handle_tpdu(self.tpdu)
             else:
                 desc = ['FCS error (expected {:02X})'.format(self.fcs), 'FCS error']
             self.put(ss, se, self.out_ann, ['link', desc])

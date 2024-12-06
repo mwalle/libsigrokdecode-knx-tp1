@@ -30,3 +30,14 @@ priority = {
     0x04: ['Normal Priority', 'Normal', 'Norm'],
     0x0c: ['Low Priority', 'Low'],
 }
+
+t_ctrl = {
+    0x8000: ['T_Data_Broadcast/T_Data_Group'],
+    0x8001: ['T_Data_Tag_Group'],
+    0x0000: ['T_Data_Individual'],
+    0x0040: ['T_Data_Connected SeqNo:{seqno:d}'],
+    0x0080: ['T_Connect'],
+    0x0081: ['T_Disconnect'],
+    0x00c2: ['T_ACK SeqNo:{seqno:d}'],
+    0x00c3: ['T_NAK SeqNo:{seqno:d}'],
+}
