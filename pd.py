@@ -60,12 +60,12 @@ class Decoder(srd.Decoder):
         ('stop-ok', 'stop OK bits'),
         ('stop-err', 'stop error bits'),
         ('raw', 'Raw data'),
-        ('logical', 'Logical data'),
+        ('link', 'Link layer data'),
     )
     annotation_rows = (
         ('bits', 'Bits', (0, 1, 2, 3, 4, 5)),
         ('raw-data', 'Raw data', (6,)),
-        ('logical-data', 'Logical data', (7,)),
+        ('layers', 'Layers', (7,)),
     )
     binary = (
         ('rxtx', 'RX/TX dump'),
@@ -145,17 +145,17 @@ class Decoder(srd.Decoder):
                 desc = ['{}Data Standard Frame, {}'.format(repeated, prio)]
             else:
                 desc = ['Data Extended Frame']
-            self.put(ss, se, self.out_ann, ['logical', desc])
+            self.put(ss, se, self.out_ann, ['link', desc])
             if octet & 0x33 == 0:
                 return
         elif self.octet_num == 2:
             sa = tp1_address_to_str(octet, self.last_octet)
             self.put(self.last_ss, se, self.out_ann,
-                     ['logical', ['Source Address:{}'.format(sa)]])
+                     ['link', ['Source Address:{}'.format(sa)]])
         elif self.octet_num == 4:
             da = tp1_address_to_str(octet, self.last_octet)
             self.put(self.last_ss, se, self.out_ann,
-                     ['logical', ['Destination Address:{}'.format(da)]])
+                     ['link', ['Destination Address:{}'.format(da)]])
         elif self.octet_num == 5:
             # save length for FCS calculation
             self.length = octet & 15
@@ -164,15 +164,15 @@ class Decoder(srd.Decoder):
             at = 'Group Address' if octet & 0x80 else 'Individal Address'
             hc = (octet >> 4) & 7
             desc = ['{}, Hop count:{}, Length:{}'.format(at, hc, len)]
-            self.put(ss, se, self.out_ann, ['logical', desc])
+            self.put(ss, se, self.out_ann, ['link', desc])
         elif self.octet_num > 5 and self.octet_num <= self.length + 6:
-            self.put(ss, se, self.out_ann, ['logical', ['Data:{:02X}'.format(octet)]])
+            self.put(ss, se, self.out_ann, ['link', ['Data:{:02X}'.format(octet)]])
         elif self.octet_num == 7 + self.length:
             if self.fcs == octet:
                 desc = ['FCS OK']
             else:
                 desc = ['FCS error (expected {:02X})'.format(self.fcs), 'FCS error']
-            self.put(ss, se, self.out_ann, ['logical', desc])
+            self.put(ss, se, self.out_ann, ['link', desc])
         self.fcs ^= octet
         self.last_ss = ss
         self.last_octet = octet
